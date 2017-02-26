@@ -22,8 +22,10 @@ module Course.Cheque where
 import Course.Core
 import Course.Optional
 import Course.List
+import Data.Char (isDigit)
 import Course.Functor
 import Course.Applicative
+import Course.Traversable
 import Course.Monad
 
 -- $setup
@@ -212,6 +214,8 @@ showDigit Eight =
   "eight"
 showDigit Nine =
   "nine"
+instance Show Digit where
+  show = hlist . showDigit
 
 -- A data type representing one, two or three digits, which may be useful for grouping.
 data Digit3 =
@@ -219,6 +223,59 @@ data Digit3 =
   | D2 Digit Digit
   | D3 Digit Digit Digit
   deriving Eq
+
+-- | Convert Digit
+--
+-- >>> map showDigit (listh [Zero .. Nine])
+-- ["zero","one","two","three","four","five","six","seven","eight","nine"]
+--
+-- >>> showDigits (D3 One Zero Zero)
+-- "one hundred"
+
+showDigits :: Digit3 -> Chars
+showDigits (D1 d) = showDigit d
+showDigits (D2 Zero d) = showDigits (D1 d)
+showDigits (D2 One d) =
+  case d of
+    Zero -> "ten"
+    One -> "eleven"
+    Two -> "twelve"
+    Three -> "thirteen"
+    Five -> "fifteen"
+    Eight -> "eighteen"
+    o -> showDigit o ++ "teen"
+showDigits (D2 Two d) =
+  case d of
+    Zero -> "twenty"
+    _ -> "twenty-" ++ showDigit d
+showDigits (D2 Three d) =
+  case d of
+    Zero -> "thirty"
+    _ -> "thirty-" ++ showDigit d
+showDigits (D2 Four d) =
+  case d of
+    Zero -> "forty"
+    _ -> "forty-" ++ showDigit d
+showDigits (D2 Five d) =
+  case d of
+    Zero -> "fifty"
+    _ -> "fifty-" ++ showDigit d
+showDigits (D2 Eight d) =
+  case d of
+    Zero -> "eighty"
+    _ -> "eighty-" ++ showDigit d
+showDigits (D2 o d) =
+  case d of
+    Zero -> showDigit o ++ "ty"
+    _ -> showDigit o ++ "ty-" ++ showDigit d
+showDigits (D3 Zero Zero d3) = showDigits (D1 d3)
+showDigits (D3 Zero d2 d3) = showDigits (D2 d2 d3)
+showDigits (D3 d1 Zero Zero) = showDigit d1 ++ " hundred"
+showDigits (D3 d1 d2 d3) = showDigit d1 ++ " hundred and " ++ showDigits (D2 d2 d3)
+
+instance Show Digit3 where
+  show = hlist . showDigits
+  
 
 -- Possibly convert a character to a digit.
 fromChar ::
@@ -320,8 +377,35 @@ fromChar _ =
 --
 -- >>> dollars "456789123456789012345678901234567890123456789012345678901234567890.12"
 -- "four hundred and fifty-six vigintillion seven hundred and eighty-nine novemdecillion one hundred and twenty-three octodecillion four hundred and fifty-six septendecillion seven hundred and eighty-nine sexdecillion twelve quindecillion three hundred and forty-five quattuordecillion six hundred and seventy-eight tredecillion nine hundred and one duodecillion two hundred and thirty-four undecillion five hundred and sixty-seven decillion eight hundred and ninety nonillion one hundred and twenty-three octillion four hundred and fifty-six septillion seven hundred and eighty-nine sextillion twelve quintillion three hundred and forty-five quadrillion six hundred and seventy-eight trillion nine hundred and one billion two hundred and thirty-four million five hundred and sixty-seven thousand eight hundred and ninety dollars and twelve cents"
+
+
 dollars ::
   Chars
   -> Chars
-dollars =
-  error "todo: Course.Cheque#dollars"
+dollars str = 
+  let (nat', dec') = break (== '.') str
+      nat'' :: List Digit
+      Full nat'' = if isEmpty nat' 
+                     then Full (Zero :. Nil)
+                     else traverse fromChar . filter isDigit $ nat'
+
+      dec'' :: Digit3
+      dec'' = case traverse fromChar $ filter isDigit dec' 
+                of Full (a :. b :. _) -> D2 a b
+                   Full (a :. Nil) -> D2 a Zero
+                   Full Nil -> D2 Zero Zero
+                   Empty -> error "not possible"
+
+      nat = flatten . reverse . zipWith encode illion . reverse . foldRight stack Nil $ nat'' 
+      dec = showDigits dec''
+      stack x Nil = D1 x :. Nil
+      stack x (D1 a :. ac) = D2 x a :. ac
+      stack x (D2 a b :. ac) = D3 x a b :. ac
+      stack x acc@(D3 _ _ _ :. _) = D1 x :. acc
+
+      encode :: Chars -> Digit3 -> Chars
+      encode _ (D3 Zero Zero Zero) = Nil
+      encode "" d = showDigits d ++ " "
+      encode pos d = showDigits d ++ " " ++ pos ++ " "
+  in nat ++ (if nat == "one " then "dollar" else "dollars") ++ " and " ++
+     dec ++ (if dec == "one" then " cent" else " cents")

@@ -32,13 +32,12 @@ anagrams ::
   Chars
   -> Filename
   -> IO (List Chars)
-anagrams =
-  error "todo: Course.Anagrams#anagrams"
+anagrams str file = 
+  (\content -> filter (\s -> any (equalIgnoringCase s) (permutations str)) (lines content)) <$> readFile file
 
 -- Compare two strings for equality, ignoring case
 equalIgnoringCase ::
   Chars
   -> Chars
   -> Bool
-equalIgnoringCase =
-  error "todo: Course.Anagrams#equalIgnoringCase"
+equalIgnoringCase = on (==) (map toLower)
